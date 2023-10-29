@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_third_person_camera::*;
-use bevy_kira_audio::prelude::*;
+use bevy_editor_pls::prelude::*;
 
 mod bevy_space_physics;
 use bevy_space_physics::ship_plugin::{SpaceShipPlugin, SpaceShip, SpaceShipCameraTarget};
@@ -14,6 +14,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         .add_plugins(ThirdPersonCameraPlugin)
+        .add_plugins(EditorPlugin::default())
         // .add_plugins(AudioPlugin)
         .add_plugins((SpacePlugin, SpaceShipPlugin, SpaceShipSoundPlugin))
         .add_systems(Startup, (setup, setup_text))
@@ -51,6 +52,24 @@ fn setup(
         ThirdPersonCameraTarget,
         SpaceObject::new(1000.0),
         SpaceShip::default(),
+    ));
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(shape::Box::new(1.0, 1.0, 1.0).into()),
+            material: materials.add(Color::BLUE.into()),
+            transform: Transform::from_xyz(15.0, 15.0, 15.0),
+            ..default()
+        },
+    ));
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(shape::Box::new(2.0, 2.0, 2.0).into()),
+            material: materials.add(Color::BLUE.into()),
+            transform: Transform::from_xyz(-15.0, 15.0, 15.0),
+            ..default()
+        },
     ));
 
     commands.spawn(PointLightBundle {
