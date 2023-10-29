@@ -1,7 +1,4 @@
-use bevy::{
-    diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
-    prelude::*,
-};
+use bevy::prelude::*;
 
 use super::ship_plugin::SpaceShip;
 use super::space::SpaceObject;
@@ -9,21 +6,17 @@ use super::space::SpaceObject;
 #[derive(Component)]
 pub struct GForceText;
 
-pub fn setup_text(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub fn setup_text(mut commands: Commands) {
     commands.spawn((
-        // Create a TextBundle that has a Text with a single section.
         TextBundle::from_section(
-            // Accepts a `String` or any type that converts into a `String`, such as `&str`
-            "nan",
+            "0",
             TextStyle {
-                // This font is loaded and will be used instead of the default font.
                 font_size: 50.0,
                 color: Color::WHITE,
                 ..default()
             },
-        ) // Set the alignment of the Text
+        )
         .with_text_alignment(TextAlignment::Center)
-        // Set the style of the TextBundle itself.
         .with_style(Style {
             position_type: PositionType::Absolute,
             bottom: Val::Px(5.0),
