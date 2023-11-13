@@ -1536,15 +1536,16 @@ dependencies = [
 
 [[package]]
 name = "bevy_kira_audio"
-version = "0.17.0"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db07967c1370395b617ec87aea116e943911e046e87fd075a0231a50be2c823f"
+checksum = "9a9678086759e54871faab0829592423492e19f8de5076127315cf892ae56f33"
 dependencies = [
  "anyhow",
- "bevy 0.11.3",
+ "bevy 0.12.0",
  "kira",
  "parking_lot",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -5559,6 +5560,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88ad59a7560b41a70d191093a945f0b87bc1deeda46fb237479708a1d6b6cdfc"
 dependencies = [
  "getrandom",
+ "rand",
  "serde",
 ]
 
