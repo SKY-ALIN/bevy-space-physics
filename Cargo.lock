@@ -472,7 +472,7 @@ dependencies = [
  "bevy_editor_pls",
  "bevy_hanabi",
  "bevy_kira_audio",
- "bevy_math 0.12.1",
+ "bevy_math 0.13.0",
  "bevy_third_person_camera",
 ]
 
