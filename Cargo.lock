@@ -588,9 +588,9 @@ dependencies = [
 
 [[package]]
 name = "bevy_editor_pls"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2afbbc82539725daf424abafebdd8b0fcda4176711acff083730e6713f280f6e"
+checksum = "d08e119d7983670a41690d60ef0e4730f0c02719118b8e6dd42b13f90a0348c0"
 dependencies = [
  "bevy",
  "bevy_editor_pls_core",
