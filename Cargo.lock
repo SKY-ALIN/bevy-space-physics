@@ -865,9 +865,9 @@ dependencies = [
 
 [[package]]
 name = "bevy_math"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f312b1b8aa6d3965b65040b08e33efac030db3071f20b44f9da9c4c3dfcaf76"
+checksum = "9d30721f36a0b5f9ad39deb140c50b85cbbaefebab8d10bd20d9de1c9572f968"
 dependencies = [
  "glam 0.25.0",
  "serde",
