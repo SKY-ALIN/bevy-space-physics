@@ -733,15 +733,16 @@ dependencies = [
 
 [[package]]
 name = "bevy_hanabi"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f63879a7274ed0d629f7240b0acc4c262aca0276503bdc182552b0f69cba163"
+checksum = "871ca056b92c79a3e3143851622df2816e6e5f462dbf568fdfc9a2048b9b49b0"
 dependencies = [
  "anyhow",
  "bevy",
  "bitflags 2.4.1",
  "bytemuck",
  "copyless",
+ "fixedbitset",
  "naga",
  "naga_oil",
  "rand",
