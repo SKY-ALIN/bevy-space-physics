@@ -14,95 +14,99 @@ impl Plugin for SpaceShipPlugin {
 
 #[derive(Clone, Copy)]
 pub struct ControlKeys {
-    pub enable_mouse_rotation_key: KeyCode,
     pub move_forward_key: KeyCode,
     pub move_back_key: KeyCode,
     pub move_up_key: KeyCode,
     pub move_down_key: KeyCode,
     pub move_left_key: KeyCode,
     pub move_right_key: KeyCode,
+    pub pitch_up_key: KeyCode,
+    pub pitch_down_key: KeyCode,
+    pub yaw_left_key: KeyCode,
+    pub yaw_right_key: KeyCode,
+    pub roll_left_key: KeyCode,
+    pub roll_right_key: KeyCode,
+    pub toggle_camera_mode: KeyCode,
 }
 
 impl Default for ControlKeys {
     fn default() -> Self {
         ControlKeys {
-            enable_mouse_rotation_key: KeyCode::ControlLeft,
-            move_forward_key: KeyCode::W,
-            move_back_key: KeyCode::S,
-            move_up_key: KeyCode::Space,
-            move_down_key: KeyCode::X,
-            move_left_key: KeyCode::A,
-            move_right_key: KeyCode::D,
+            move_forward_key: KeyCode::Space,
+            move_back_key: KeyCode::KeyX,
+            move_up_key: KeyCode::ArrowUp,
+            move_down_key: KeyCode::ArrowDown,
+            move_left_key: KeyCode::ArrowLeft,
+            move_right_key: KeyCode::ArrowRight,
+            pitch_up_key: KeyCode::KeyS,
+            pitch_down_key: KeyCode::KeyW,
+            yaw_left_key: KeyCode::KeyA,
+            yaw_right_key: KeyCode::KeyD,
+            roll_left_key: KeyCode::KeyQ,
+            roll_right_key: KeyCode::KeyE,
+            toggle_camera_mode: KeyCode::KeyV,
         }
     }
 }
 
 #[derive(Component)]
 pub struct SpaceShip {
-    // rotation_per_second: f32,
+    pub rotation_per_second: f32,
     pub main_thruster_power: f32,
     pub side_thrusters_power: f32,
     pub control_keys: ControlKeys,
+    pub distance_from_center_to_pilot: f32,
 }
 
 impl Default for SpaceShip {
     fn default() -> Self {
         SpaceShip {
-            // rotation_per_second: 30.0,
+            rotation_per_second: 30.0,
             main_thruster_power: 10000.0,
             side_thrusters_power: 3000.0,
             control_keys: ControlKeys::default(),
+            distance_from_center_to_pilot: 2.0,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum CameraMode {
+    Absolute,
+    Relative,
+}
+
+impl CameraMode {
+    fn next(&self) -> Self {
+        match self {
+            CameraMode::Absolute => CameraMode::Relative,
+            CameraMode::Relative => CameraMode::Absolute,
         }
     }
 }
 
 #[derive(Component)]
-pub struct SpaceShipCameraTarget;
+pub struct SpaceShipCameraTarget {
+    pub mode: CameraMode,
+}
+
+impl Default for SpaceShipCameraTarget {
+    fn default() -> Self {
+        SpaceShipCameraTarget {
+            mode: CameraMode::Absolute,
+        }
+    }
+}
 
 fn control_ship(
-    camera_query: Query<&Transform, With<SpaceShipCameraTarget>>,
     mut ship_query: Query<(&SpaceShip, &Transform, &mut SpaceObject)>,
-    // time: Res<Time>,
-    keys: Res<Input<KeyCode>>,
+    mut camera_query: Query<&mut SpaceShipCameraTarget>,
+    keys: Res<ButtonInput<KeyCode>>,
 ) {
-    let Ok(camera_transform) = camera_query.get_single() else { return };
     let Ok((ship, ship_transform, mut object)) = ship_query.get_single_mut() else { return };
+    let Ok(mut camera) = camera_query.get_single_mut() else { return };
 
     let mass = object.mass;
-    // let rotation_matrix = Mat3::from_quat(camera_transform.rotation);
-
-    // let camera_vec3: Vec3 = camera_transform.rotation.xyz();
-    // let ship_vec3: Vec3 = ship_transform.rotation.xyz();
-    // let diff_vec3 = camera_vec3 - ship_vec3;
-
-    // println!("Ship Quat: {}", camera_transform.rotation);
-    // println!("Ship: {}", diff_vec3 * PI / 180.0);f
-    // println!("Diff: {}", camera_transform.rotation - ship_transform.rotation);
-    // let rotation_diff = camera_transform.rotation - ship_transform.rotation;
-
-    if keys.pressed(ship.control_keys.enable_mouse_rotation_key) {
-        // if diff_vec3.x > 0.01 {
-        //     object.rotation *= 
-        //     ship_transform.rotate_x(time.delta_seconds() * ship.rotation_per_second * PI / 180.0);
-        // } else if diff_vec3.x < -0.01 {
-        //     ship_transform.rotate_x(time.delta_seconds() * ship.rotation_per_second * PI / 180.0 * -1.0);
-        // }
-
-        // if diff_vec3.y > 0.01 {
-        //     ship_transform.rotate_y(time.delta_seconds() * ship.rotation_per_second * PI / 180.0);
-        // } else if diff_vec3.y < -0.01 {
-        //     ship_transform.rotate_y(time.delta_seconds() * ship.rotation_per_second * PI / 180.0 * -1.0);
-        // }
-
-        // if ship_vec3.z > 0.01 {
-        //     ship_transform.rotate_z(time.delta_seconds() * ship.rotation_per_second * PI / 180.0);
-        // } else if diff_vec3.z < -0.01 {
-        //     ship_transform.rotate_z(time.delta_seconds() * ship.rotation_per_second * PI / 180.0 * -1.0);
-        // }
-        object.rotation = camera_transform.rotation;
-        // object.rotation = camera_transform.rotation * Quat::inverse(ship_transform.rotation);
-        // println!("object.rotation = {:?}", object.rotation);
-    }
 
     let mut acceleration = Vec3::ZERO;
 
@@ -125,5 +129,37 @@ fn control_ship(
         acceleration += ship_transform.right() * ship.side_thrusters_power / mass;
     }
 
+    let mut angular_acceleration = Vec3::ZERO;
+
+    if keys.pressed(ship.control_keys.pitch_up_key) {
+        angular_acceleration += ship_transform.right() * 1.0;
+    }
+
+    if keys.pressed(ship.control_keys.pitch_down_key) {
+        angular_acceleration += ship_transform.left() * 1.0;
+    }
+
+    if keys.pressed(ship.control_keys.yaw_left_key) {
+        angular_acceleration += ship_transform.up() * 1.0;
+    }
+
+    if keys.pressed(ship.control_keys.yaw_right_key) {
+        angular_acceleration += ship_transform.down() * 1.0;
+    }
+
+    if keys.pressed(ship.control_keys.roll_left_key) {
+        angular_acceleration += ship_transform.forward() * 1.0;
+    }
+
+    if keys.pressed(ship.control_keys.roll_right_key) {
+        angular_acceleration += ship_transform.back() * 1.0;
+    }
+
     object.acceleration = acceleration;
+    object.angular_acceleration = angular_acceleration;
+
+    if keys.just_pressed(ship.control_keys.toggle_camera_mode) {
+        let new_mode = camera.mode.next();
+        camera.mode = new_mode;
+    }
 }

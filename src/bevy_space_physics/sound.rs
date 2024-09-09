@@ -33,7 +33,7 @@ pub struct MainThruster;
 pub struct SideThruster;
 
 pub fn play_thruster_sounds(
-    keyboard_input: Res<Input<KeyCode>>,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
     ship_query: Query<&SpaceShip>,
     main_thruster: Res<AudioChannel<MainThruster>>,
     side_thruster: Res<AudioChannel<SideThruster>>,
