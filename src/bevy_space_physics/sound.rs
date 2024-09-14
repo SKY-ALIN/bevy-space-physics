@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_kira_audio::prelude::*;
 
-use super::ship_plugin::SpaceShip;
+use super::player::SpaceShip;
 
 pub struct SpaceShipSoundPlugin;
 

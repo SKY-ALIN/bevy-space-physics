@@ -48,6 +48,6 @@ fn law_of_conservation_of_self_momentum(
             * Quat::from_rotation_y(object.angular_velocity.y * time.delta_seconds())
             * Quat::from_rotation_z(object.angular_velocity.z * time.delta_seconds());
 
-        transform.rotation = transform.rotation * delta_rotation;
+        transform.rotation = delta_rotation * transform.rotation;
     }
 }

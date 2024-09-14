@@ -393,7 +393,6 @@ dependencies = [
  "bevy_hanabi",
  "bevy_kira_audio",
  "bevy_math",
- "bevy_third_person_camera",
 ]
 
 [[package]]
@@ -1192,15 +1191,6 @@ dependencies = [
  "glyph_brush_layout",
  "serde",
  "thiserror",
-]
-
-[[package]]
-name = "bevy_third_person_camera"
-version = "0.1.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60cd4577b9863aacca41bce0816040b71b8531082c77b4eb698f9e10f874d6e3"
-dependencies = [
- "bevy",
 ]
 
 [[package]]

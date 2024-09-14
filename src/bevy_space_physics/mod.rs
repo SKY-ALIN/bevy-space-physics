@@ -1,4 +1,4 @@
-pub mod ship_plugin;
-pub mod space;
-pub mod g_force;
+pub mod player;
+pub mod physics;
+pub mod text;
 pub mod sound;

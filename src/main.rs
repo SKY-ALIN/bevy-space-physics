@@ -1,25 +1,27 @@
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
-use bevy::input::mouse::MouseMotion;
+use bevy::color::palettes::css::{DARK_GRAY, GREEN, PURPLE, RED, WHITE, YELLOW};
+use bevy_math::Dir3;
+use bevy_hanabi::prelude::*;
 use bevy_editor_pls::prelude::*;
 
 mod bevy_space_physics;
-use bevy_space_physics::ship_plugin::{SpaceShipPlugin, SpaceShip, SpaceShipCameraTarget};
-use bevy_space_physics::space::{SpacePlugin, SpaceObject};
-use bevy_space_physics::g_force::{setup_text, update_text, update_camera_mode_text};
+use bevy_space_physics::player::{CameraPlugin, SpaceShip, SpaceShipCameraTarget, SpaceShipPlugin,};
+use bevy_space_physics::physics::{SpacePlugin, SpaceObject};
+use bevy_space_physics::text::DataDysplayPlugin;
 use bevy_space_physics::sound::SpaceShipSoundPlugin;
+
 
 mod setup_effect;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
-        // .add_plugins(ThirdPersonCameraPlugin)
-        // .add_plugins(EditorPlugin::default())
+        .add_plugins(EditorPlugin::default())
         // .add_plugins(AudioPlugin)
-        .add_plugins((SpacePlugin, SpaceShipPlugin, SpaceShipSoundPlugin))
-        .add_systems(Startup, (setup, setup_text))
-        .add_systems(Update, (update_text, update_camera_mode_text, move_camera))
+        .add_plugins(HanabiPlugin)
+        .add_plugins((SpacePlugin, SpaceShipPlugin, SpaceShipSoundPlugin, CameraPlugin, DataDysplayPlugin))
+        .add_systems(Startup, setup)
+        .add_systems(Update, update_gismos)
         .run();
 }
 
@@ -28,20 +30,8 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut config_store: ResMut<GizmoConfigStore>,
 ) {
-    let ship = meshes.add(Cuboid::new(1.0, 1.0, 2.5));
-
-    commands.spawn((
-        PbrBundle {
-            mesh: ship,
-            material: materials.add(Color::srgb_u8(255, 0, 0)),
-            transform: Transform::from_xyz(0.0, 10.0, 0.0),
-            ..default()
-        },
-        SpaceObject::new(1000.0),
-        SpaceShip::default(),
-    ));
-
     commands.spawn((Camera3dBundle::default(), SpaceShipCameraTarget::default()));
 
     commands.spawn((
@@ -62,15 +52,17 @@ fn setup(
         },
     ));
 
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 9000.0,
-            
-            range: 100.,
+    commands.spawn(SpotLightBundle {
+        spot_light: SpotLight {
             shadows_enabled: true,
+            range: 300.0,
+            intensity: 50000000.0,
+            color: PURPLE.into(),
+            // outer_angle: std::f32::consts::PI / 4.0,
+            // inner_angle: std::f32::consts::PI / 4.0 * 0.8,
             ..default()
         },
-        transform: Transform::from_xyz(8.0, 16.0, 8.0),
+        transform: Transform::from_xyz(13.0, 16.0, 13.0).looking_at(Vec3::NEG_X * 1.5, Vec3::Y),
         ..default()
     });
 
@@ -79,44 +71,34 @@ fn setup(
         material: materials.add(Color::WHITE),
         ..default()
     });
+
+    let (_, light_config) = config_store.config_mut::<LightGizmoConfigGroup>();
+    light_config.draw_all = true;
+    light_config.color = LightGizmoColor::MatchLightColor;
+
 }
 
-fn move_camera(
-    mut mouse_motion: EventReader<MouseMotion>,
-    window_query: Query<&Window, With<PrimaryWindow>>,
-    mut camera: Query<&mut Transform, With<SpaceShipCameraTarget>>,
-    player: Query<&Transform, (With<SpaceShip>, Without<SpaceShipCameraTarget>)>,
 
-) {
-    let Ok(player_transform) = player.get_single() else { return };
-    let Ok(mut camera_transform) = camera.get_single_mut() else { return };
-    let Ok(window) = window_query.get_single() else { return };
-
-    let mut motion = Vec2::ZERO;
-    for m in mouse_motion.read() {
-        motion = m.delta;
+fn update_gismos(player_query: Query<(&Transform, &SpaceObject, &SpaceShip), With<SpaceShip>>, mut gizmos: Gizmos) {
+    let Ok((ship_transform, object, ship)) = player_query.get_single() else { return };
+    gizmos.arrow(ship_transform.translation, ship_transform.translation + ship_transform.forward() * 3.0, GREEN);
+    gizmos.arrow(ship_transform.translation, ship_transform.translation + ship_transform.up() * 1.0, GREEN);
+    // if ship.desired_movement_vector.length() > 0.0 {
+    //     gizmos.arrow(ship_transform.translation, ship_transform.translation + ship_transform.rotation * ship.desired_movement_vector * 2.5, WHITE);
+    // }
+    if object.velocity.length() > 0.0 {
+        gizmos.arrow(ship_transform.translation, ship_transform.translation + object.velocity.normalize() * 2.5, YELLOW);
     }
-
-    let rotation = {
-        if motion.length_squared() > 0.0 {
-            let delta_x = -motion.x / window.width() * std::f32::consts::PI;
-            let delta_y = -motion.y / window.height() * std::f32::consts::PI;
-            let rotation = Quat::from_rotation_y(delta_x) * camera_transform.rotation;
-            let rotation_with_pitch = rotation * Quat::from_rotation_x(delta_y);
-            let up_vector = rotation_with_pitch * Vec3::Y;
-            if up_vector.y > 0.0 {
-                rotation_with_pitch
-            } else {
-                rotation
-            }
-        } else {
-            camera_transform.rotation
-        }
-    };
-
-    let rotation_metrix = Mat3::from_quat(rotation);
-    //camera_transform.translation = player_transform.rotation * rotation_metrix.mul_vec3(Vec3::new(0.0,0.0, 10.0)) + player_transform.translation;
-    camera_transform.translation = rotation_metrix.mul_vec3(Vec3::new(0.0,0.0, 10.0)) + player_transform.translation;
-    // camera_transform.rotation = player_transform.rotation.inverse() * rotation;
-    camera_transform.rotation = rotation;
+    if object.acceleration.length() > 0.0 {
+        gizmos.arrow(ship_transform.translation, ship_transform.translation + object.acceleration.normalize() * 2.5, RED);
+    }
+    let angular_velocity_direction = Dir3::new(object.angular_velocity.normalize_or_zero());
+    if angular_velocity_direction.is_ok() {
+        gizmos.circle(ship_transform.translation, angular_velocity_direction.unwrap(), 2.0, GREEN);
+    }
+    let angular_acceleration_direction = Dir3::new(object.angular_acceleration.normalize_or_zero());
+    if angular_acceleration_direction.is_ok() {
+        gizmos.circle(ship_transform.translation, angular_acceleration_direction.unwrap(), 2.0, RED);
+    }
+    gizmos.grid(Vec3::ZERO, Quat::from_rotation_x(std::f32::consts::PI / 2.0), UVec2::splat(50), Vec2::new(10.0, 10.0), DARK_GRAY);
 }
