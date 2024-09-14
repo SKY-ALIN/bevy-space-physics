@@ -16,7 +16,7 @@ mod setup_effect;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
-        .add_plugins(EditorPlugin::default())
+        // .add_plugins(EditorPlugin::default())
         // .add_plugins(AudioPlugin)
         .add_plugins(HanabiPlugin)
         .add_plugins((SpacePlugin, SpaceShipPlugin, SpaceShipSoundPlugin, CameraPlugin, DataDysplayPlugin))
@@ -83,9 +83,9 @@ fn update_gismos(player_query: Query<(&Transform, &SpaceObject, &SpaceShip), Wit
     let Ok((ship_transform, object, ship)) = player_query.get_single() else { return };
     gizmos.arrow(ship_transform.translation, ship_transform.translation + ship_transform.forward() * 3.0, GREEN);
     gizmos.arrow(ship_transform.translation, ship_transform.translation + ship_transform.up() * 1.0, GREEN);
-    // if ship.desired_movement_vector.length() > 0.0 {
-    //     gizmos.arrow(ship_transform.translation, ship_transform.translation + ship_transform.rotation * ship.desired_movement_vector * 2.5, WHITE);
-    // }
+    if ship.desired_movement_vector.length() > 0.0 {
+        gizmos.arrow(ship_transform.translation, ship_transform.translation + ship_transform.rotation * ship.desired_movement_vector * 2.5, WHITE);
+    }
     if object.velocity.length() > 0.0 {
         gizmos.arrow(ship_transform.translation, ship_transform.translation + object.velocity.normalize() * 2.5, YELLOW);
     }
@@ -99,6 +99,10 @@ fn update_gismos(player_query: Query<(&Transform, &SpaceObject, &SpaceShip), Wit
     let angular_acceleration_direction = Dir3::new(object.angular_acceleration.normalize_or_zero());
     if angular_acceleration_direction.is_ok() {
         gizmos.circle(ship_transform.translation, angular_acceleration_direction.unwrap(), 2.0, RED);
+    }
+    let desired_angular_direction = Dir3::new(ship.desired_rotation_vector.normalize_or_zero());
+    if desired_angular_direction.is_ok() {
+        gizmos.circle(ship_transform.translation, ship_transform.rotation * desired_angular_direction.unwrap(), 2.0, WHITE);
     }
     gizmos.grid(Vec3::ZERO, Quat::from_rotation_x(std::f32::consts::PI / 2.0), UVec2::splat(50), Vec2::new(10.0, 10.0), DARK_GRAY);
 }
