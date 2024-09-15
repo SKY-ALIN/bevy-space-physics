@@ -1,10 +1,7 @@
-use core::f32;
-
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy::input::mouse::MouseMotion;
 use bevy_hanabi::prelude::*;
-use bevy_math::VectorSpace;
 
 use super::physics::SpaceObject;
 
@@ -128,8 +125,6 @@ pub struct Thruster {
 
 #[derive(Component)]
 pub struct SpaceShip {
-    pub main_thruster_power: f32,
-    pub side_thrusters_power: f32,
     pub control_keys: ControlKeys,
     pub distance_from_center_to_pilot: f32,
     pub desired_movement_vector: Vec3,
@@ -139,9 +134,6 @@ pub struct SpaceShip {
 impl Default for SpaceShip {
     fn default() -> Self {
         SpaceShip {
-            // rotation_per_second: 30.0,
-            main_thruster_power: 10000.0,
-            side_thrusters_power: 3000.0,
             control_keys: ControlKeys::default(),
             distance_from_center_to_pilot: 2.0,
             desired_movement_vector: Vec3::ZERO,
@@ -286,7 +278,7 @@ fn apply_thrusters(
 
         if appliable_for_movement || appliable_for_rotation {
             movement_acceleration += force_direction * thruster.force / object.mass;
-        
+
             let (a, b, c) = (1.0f32, 1.0f32, 2.5f32);
             let moment_of_inertia = Vec3::new(
                 (b.powi(2) + c.powi(2)) * object.mass / 12.0,
@@ -388,49 +380,41 @@ fn ship_rotation_full_stabilization(
 
 fn ship_rotation_aim_stabilization(
     settings_query: Query<&SpaceShipSettings>,
-    mut ship_query: Query<(&mut SpaceObject, &Transform), With<SpaceShip>>,
+    mut ship_query: Query<(&SpaceObject, &mut SpaceShip, &Transform), With<SpaceShip>>,
     camera_query: Query<&Transform, With<SpaceShipCameraTarget>>,
 ) {
     let Ok(settings) = settings_query.get_single() else { return };
-    let Ok((mut object, player_transform)) = ship_query.get_single_mut() else { return };
+    let Ok((object, mut ship, player_transform)) = ship_query.get_single_mut() else { return };
     let Ok(camera_transform) = camera_query.get_single() else { return };
 
     if settings.rotation_stabilization != RotationStabilization::Aiming { return }
 
-    // const PERMISSIBLE_STABILIZATION_ERROR: f32 = 1.0;
+    const MIN_ANGULAR_VELOCITY: f32 = std::f32::consts::PI / 12.0;  // 15 degrees / second
+    const STABILIZATION_THRESHOLD: f32 = std::f32::consts::PI / 60.0;  // 3 degrees
 
-    let delta_player_camera_rotation = player_transform.rotation.inverse() * camera_transform.rotation;
-    if delta_player_camera_rotation.abs_diff_eq(Quat::IDENTITY, f32::EPSILON) {
-        object.angular_acceleration = Vec3::ZERO;
-        return
+    let desired_direction = (player_transform.rotation.inverse() * camera_transform.rotation).xyz().normalize();
+    let current_velocity = object.angular_velocity.length();
+    let max_angular_velocity = (player_transform.rotation.angle_between(camera_transform.rotation) / 2.0).max(MIN_ANGULAR_VELOCITY);  // from 15 to 120 degrees per sec
+
+    if player_transform.rotation.angle_between(camera_transform.rotation) < STABILIZATION_THRESHOLD {
+        if current_velocity > STABILIZATION_THRESHOLD {
+            ship.desired_rotation_vector = player_transform.rotation.inverse() * object.angular_velocity.normalize_or_zero() * -1.0;
+        } else {
+            ship.desired_rotation_vector = Vec3::ZERO;
+        }
+    } else if current_velocity > max_angular_velocity {
+        ship.desired_rotation_vector = player_transform.rotation.inverse() * object.angular_velocity.normalize_or_zero() * -1.0;
+    } else {
+        if object.angular_velocity.normalize_or_zero().dot(desired_direction) < 0.97 || current_velocity < MIN_ANGULAR_VELOCITY {
+            let current_direction = object.angular_velocity.normalize_or_zero();
+            let direction_difference = desired_direction - current_direction;
+            ship.desired_rotation_vector = (current_direction + direction_difference).normalize();
+        } else {
+            ship.desired_rotation_vector = Vec3::ZERO;
+        }
     }
-
-    // let desired_velocity = (player_transform.rotation.inverse() * camera_transform.rotation).xyz().normalize();
-    // let delta_valocity = desired_velocity - object.angular_velocity.normalize_or_zero();
-
-    // const MAX_ANGULAR_VELOCITY: f32 = std::f32::consts::PI / 2.0;  // 90 degrees / second
-    // const MIN_ANGULAR_VALOCITY: f32 = std::f32::consts::PI / 3.0;  // 60 degrees / second
-
-    // if delta_valocity.length() < f32::EPSILON && object.angular_velocity.length() > MIN_ANGULAR_VALOCITY && object.angular_velocity.length() < MAX_ANGULAR_VELOCITY {
-    //     object.angular_acceleration = Vec3::ZERO;
-    //     return
-    // }
-
-    // const ANGULAR_ACCELERATION: f32 = 1.0;
-
-    // object.angular_acceleration = delta_valocity.normalize() * ANGULAR_ACCELERATION;
-
-    // let angle = camera_transform.rotation.xyz().angle_between(object.angular_velocity.normalize()).to_degrees();
-
-    // if object.angular_velocity.length() < 1.0  {
-        // let stabilization_angular_vector = delta_player_camera_rotation.xyz().normalize();
-        // object.angular_acceleration = stabilization_angular_vector;
-    // } else {
-    //     object.angular_acceleration = Vec3::ZERO;
-    // }
 }
 
-// !!! Basic movement stabilization without using data about thrusters
 fn ship_movement_stabilization(
     settings_query: Query<&SpaceShipSettings>,
     mut ship_query: Query<(&SpaceObject, &Transform, &mut SpaceShip)>,
@@ -438,7 +422,7 @@ fn ship_movement_stabilization(
     let Ok(settings) = settings_query.get_single() else { return };
     let Ok((object, ship_transform, mut ship)) = ship_query.get_single_mut() else { return };
     
-    const PERMISSIBLE_STABILIZATION_ERROR: f32 = 1.0;
+    const PERMISSIBLE_STABILIZATION_ERROR: f32 = 0.3;  // 0.3 m/s
 
     if settings.movement_stabilization == MovementStabilization::No {
         return
