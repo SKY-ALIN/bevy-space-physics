@@ -10,12 +10,13 @@ pub struct SpaceShipPlugin;
 impl Plugin for SpaceShipPlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_systems(Startup, spawn_ship)
+            .add_systems(Startup, spawn_player)
             .add_systems(Update, (
                 control_ship,
                 apply_thrusters,
                 ship_rotation_full_stabilization,
-                ship_rotation_aim_stabilization,
+                ship_rotation_player_aim_stabilization,
+                ship_rotation_ai_aim_stabilization,
                 ship_movement_stabilization,
             ));
     }
@@ -28,6 +29,12 @@ impl Plugin for CameraPlugin {
         app.add_systems(Update, move_camera);
     }
 }
+
+#[derive(Component)]
+pub struct Player;
+
+#[derive(Component)]
+pub struct AIPlayer;
 
 #[derive(Clone, Copy)]
 pub struct ControlKeys {
@@ -173,9 +180,9 @@ impl Default for SpaceShipCameraTarget {
 }
 
 fn control_ship(
-    mut ship_query: Query<&mut SpaceShip>,
+    mut ship_query: Query<&mut SpaceShip, With<Player>>,
     mut camera_query: Query<&mut SpaceShipCameraTarget>,
-    mut settings_query: Query<&mut SpaceShipSettings>,
+    mut settings_query: Query<&mut SpaceShipSettings, With<Player>>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
     let Ok(mut ship) = ship_query.get_single_mut() else { return };
@@ -254,70 +261,71 @@ fn control_ship(
 }
 
 fn apply_thrusters(
-    mut ship_query: Query<(&SpaceShip, &Transform, &mut SpaceObject)>,
+    mut ship_query: Query<(&SpaceShip, &Transform, &mut SpaceObject, &Children)>,
     thruster_query: Query<(&Thruster, &Transform, &Children)>,
     mut effect_query: Query<(&mut EffectSpawner, &mut EffectProperties)>,
 ) {
-    let Ok((ship, ship_transform, mut object)) = ship_query.get_single_mut() else { return };
+    for (ship, ship_transform, mut object, ship_children) in ship_query.iter_mut() {
 
-    let mut movement_acceleration = Vec3::ZERO;
-    let mut angular_acceleration = Vec3::ZERO;
+        let mut movement_acceleration = Vec3::ZERO;
+        let mut angular_acceleration = Vec3::ZERO;
 
-    for (thruster, thruster_transform, children) in thruster_query.iter() {
-        let force_direction = (ship_transform.rotation * thruster.direction * -1.0).normalize();
-        let r = thruster_transform.translation;
-        let torque = r.cross(thruster.direction * -1.0 * thruster.force);
+        for (thruster, thruster_transform, thruster_children) in thruster_query.iter_many(ship_children) {
+            let force_direction = (ship_transform.rotation * thruster.direction * -1.0).normalize();
+            let r = thruster_transform.translation;
+            let torque = r.cross(thruster.direction * -1.0 * thruster.force);
 
-        let appliable_for_movement = if ship.desired_movement_vector.length() > 0.0 {
-            thruster.direction.dot(ship.desired_movement_vector) < 0.0
-        } else { false };
+            let appliable_for_movement = if ship.desired_movement_vector.length() > 0.0 {
+                thruster.direction.dot(ship.desired_movement_vector) < 0.0
+            } else { false };
 
-        let appliable_for_rotation = if ship.desired_rotation_vector.length() > 0.0 {
-            torque.dot(ship.desired_rotation_vector) > 0.0
-        } else { false };
+            let appliable_for_rotation = if ship.desired_rotation_vector.length() > 0.0 {
+                torque.dot(ship.desired_rotation_vector) > 0.0
+            } else { false };
 
-        if appliable_for_movement || appliable_for_rotation {
-            movement_acceleration += force_direction * thruster.force / object.mass;
+            if appliable_for_movement || appliable_for_rotation {
+                movement_acceleration += force_direction * thruster.force / object.mass;
 
-            let (a, b, c) = (1.0f32, 1.0f32, 2.5f32);
-            let moment_of_inertia = Vec3::new(
-                (b.powi(2) + c.powi(2)) * object.mass / 12.0,
-                (a.powi(2) + c.powi(2)) * object.mass / 12.0,
-                (a.powi(2) + b.powi(2)) * object.mass / 12.0,
-            );
-            // let inertia_tensor = Vec3::new(
-            //     object.mass * (r.y.powi(2) + r.z.powi(2)),  // Ixx
-            //     object.mass * (r.x.powi(2) + r.z.powi(2)),  // Iyy
-            //     object.mass * (r.x.powi(2) + r.y.powi(2))   // Izz
-            // );
-            angular_acceleration += ship_transform.rotation * (torque / moment_of_inertia);
-        }
+                let (a, b, c) = (1.0f32, 1.0f32, 2.5f32);
+                let moment_of_inertia = Vec3::new(
+                    (b.powi(2) + c.powi(2)) * object.mass / 12.0,
+                    (a.powi(2) + c.powi(2)) * object.mass / 12.0,
+                    (a.powi(2) + b.powi(2)) * object.mass / 12.0,
+                );
+                // let inertia_tensor = Vec3::new(
+                //     object.mass * (r.y.powi(2) + r.z.powi(2)),  // Ixx
+                //     object.mass * (r.x.powi(2) + r.z.powi(2)),  // Iyy
+                //     object.mass * (r.x.powi(2) + r.y.powi(2))   // Izz
+                // );
+                angular_acceleration += ship_transform.rotation * (torque / moment_of_inertia);
+            }
 
-        if appliable_for_movement || appliable_for_rotation {
-            for &child in children {
-                if let Ok((mut effect_spawner, mut effect_properties)) = effect_query.get_mut(child) {
-                    let Some(velocity_value) = effect_properties.get_stored("velocity_value") else { continue; };
-                    effect_properties.set("velocity", (force_direction * -1.0 * velocity_value.as_scalar().as_f32() + object.velocity).into());
-                    effect_spawner.set_active(true);
+            if appliable_for_movement || appliable_for_rotation {
+                for &child in thruster_children {
+                    if let Ok((mut effect_spawner, mut effect_properties)) = effect_query.get_mut(child) {
+                        let Some(velocity_value) = effect_properties.get_stored("velocity_value") else { continue; };
+                        effect_properties.set("velocity", (force_direction * -1.0 * velocity_value.as_scalar().as_f32() + object.velocity).into());
+                        effect_spawner.set_active(true);
+                    }
+                }
+            } else {
+                for &child in thruster_children {
+                    if let Ok((mut effect_spawner, _)) = effect_query.get_mut(child) {
+                        effect_spawner.set_active(false);
+                    }
                 }
             }
-        } else {
-            for &child in children {
-                if let Ok((mut effect_spawner, _)) = effect_query.get_mut(child) {
-                    effect_spawner.set_active(false);
-                }
-            }
         }
+        object.acceleration = movement_acceleration;
+        object.angular_acceleration = angular_acceleration;
     }
-    object.acceleration = movement_acceleration;
-    object.angular_acceleration = angular_acceleration;
 }
 
 fn move_camera(
     mut mouse_motion: EventReader<MouseMotion>,
     window_query: Query<&Window, With<PrimaryWindow>>,
     mut camera: Query<&mut Transform, With<SpaceShipCameraTarget>>,
-    player: Query<&Transform, (With<SpaceShip>, Without<SpaceShipCameraTarget>)>,
+    player: Query<&Transform, (With<Player>, Without<SpaceShipCameraTarget>)>,
 
 ) {
     let Ok(player_transform) = player.get_single() else { return };
@@ -354,49 +362,66 @@ fn move_camera(
 }
 
 fn ship_rotation_full_stabilization(
-    settings_query: Query<&SpaceShipSettings>,
-    mut ship_query: Query<(&SpaceObject, &Transform, &mut SpaceShip)>,
+    mut ship_query: Query<(&SpaceObject, &Transform, &mut SpaceShip, &SpaceShipSettings)>,
 ) {
-    let Ok(settings) = settings_query.get_single() else { return };
-    let Ok((object, ship_transform, mut ship)) = ship_query.get_single_mut() else { return };
-
-    if settings.rotation_stabilization != RotationStabilization::Full { return }
-
     const PERMISSIBLE_STABILIZATION_ERROR: f32 = 1.0;
 
-    if object.angular_velocity.length().to_degrees() < PERMISSIBLE_STABILIZATION_ERROR {
-        ship.desired_rotation_vector = Vec3::ZERO;
-        return
+    for (object, ship_transform, mut ship, settings) in ship_query.iter_mut() {
+
+        if settings.rotation_stabilization != RotationStabilization::Full { continue; }
+
+
+        if object.angular_velocity.length().to_degrees() < PERMISSIBLE_STABILIZATION_ERROR {
+            ship.desired_rotation_vector = Vec3::ZERO;
+            continue;
+        }
+        let stabilization_angular_vector = object.angular_velocity.normalize() * -1.0;
+
+        // let stabilization_angular_vector_x = if object.angular_velocity.x.abs().to_degrees() > PERMISSIBLE_STABILIZATION_ERROR { -object.angular_velocity.x } else { 0.0 };
+        // let stabilization_angular_vector_y = if object.angular_velocity.y.abs().to_degrees() > PERMISSIBLE_STABILIZATION_ERROR { -object.angular_velocity.y } else { 0.0 };
+        // let stabilization_angular_vector_z = if object.angular_velocity.z.abs().to_degrees() > PERMISSIBLE_STABILIZATION_ERROR { -object.angular_velocity.z } else { 0.0 };
+        // let stabilization_angular_vector = Vec3::new(stabilization_angular_vector_x, stabilization_angular_vector_y, stabilization_angular_vector_z).normalize();
+
+        ship.desired_rotation_vector = ship_transform.rotation.inverse() * stabilization_angular_vector;
     }
-    let stabilization_angular_vector = object.angular_velocity.normalize() * -1.0;
+}
 
-    // let stabilization_angular_vector_x = if object.angular_velocity.x.abs().to_degrees() > PERMISSIBLE_STABILIZATION_ERROR { -object.angular_velocity.x } else { 0.0 };
-    // let stabilization_angular_vector_y = if object.angular_velocity.y.abs().to_degrees() > PERMISSIBLE_STABILIZATION_ERROR { -object.angular_velocity.y } else { 0.0 };
-    // let stabilization_angular_vector_z = if object.angular_velocity.z.abs().to_degrees() > PERMISSIBLE_STABILIZATION_ERROR { -object.angular_velocity.z } else { 0.0 };
-    // let stabilization_angular_vector = Vec3::new(stabilization_angular_vector_x, stabilization_angular_vector_y, stabilization_angular_vector_z).normalize();
+fn ship_rotation_player_aim_stabilization(
+    mut ship_query: Query<(&SpaceObject, &mut SpaceShip, &Transform, &SpaceShipSettings), With<Player>>,
+    camera_query: Query<&Transform, With<SpaceShipCameraTarget>>,
+) {
+    let Ok((object, mut ship, player_transform, settings)) = ship_query.get_single_mut() else { return };
+    let Ok(camera_transform) = camera_query.get_single() else { return };
+    if settings.rotation_stabilization != RotationStabilization::Aiming { return }
+    ship_rotation_aim_stabilization(object, &mut ship, player_transform, camera_transform.rotation);
+}
 
-    ship.desired_rotation_vector = ship_transform.rotation.inverse() * stabilization_angular_vector;
+fn ship_rotation_ai_aim_stabilization(
+    mut ship_query: Query<(&SpaceObject, &mut SpaceShip, &Transform), With<AIPlayer>>,
+    player_query: Query<&Transform, With<Player>>,
+) {
+    let Ok(player_transform) = player_query.get_single() else { return };
+    for (object, mut ship, ship_transform) in ship_query.iter_mut() {
+        ship.desired_movement_vector = Vec3::NEG_Z;
+        let target = Quat::from_rotation_arc(Vec3::Z, (ship_transform.translation - player_transform.translation).normalize());
+        ship_rotation_aim_stabilization(object, &mut ship, ship_transform, target);
+    }
 }
 
 fn ship_rotation_aim_stabilization(
-    settings_query: Query<&SpaceShipSettings>,
-    mut ship_query: Query<(&SpaceObject, &mut SpaceShip, &Transform), With<SpaceShip>>,
-    camera_query: Query<&Transform, With<SpaceShipCameraTarget>>,
+    object: &SpaceObject,
+    ship: &mut SpaceShip,
+    player_transform: &Transform,
+    target_rotation: Quat,
 ) {
-    let Ok(settings) = settings_query.get_single() else { return };
-    let Ok((object, mut ship, player_transform)) = ship_query.get_single_mut() else { return };
-    let Ok(camera_transform) = camera_query.get_single() else { return };
-
-    if settings.rotation_stabilization != RotationStabilization::Aiming { return }
-
     const MIN_ANGULAR_VELOCITY: f32 = std::f32::consts::PI / 12.0;  // 15 degrees / second
     const STABILIZATION_THRESHOLD: f32 = std::f32::consts::PI / 60.0;  // 3 degrees
 
-    let desired_direction = (player_transform.rotation.inverse() * camera_transform.rotation).xyz().normalize();
+    let desired_direction = (player_transform.rotation.inverse() * target_rotation).xyz().normalize();
     let current_velocity = object.angular_velocity.length();
-    let max_angular_velocity = (player_transform.rotation.angle_between(camera_transform.rotation) / 2.0).max(MIN_ANGULAR_VELOCITY);  // from 15 to 120 degrees per sec
+    let max_angular_velocity = (player_transform.rotation.angle_between(target_rotation) / 2.0).max(MIN_ANGULAR_VELOCITY);  // from 15 to 120 degrees per sec
 
-    if player_transform.rotation.angle_between(camera_transform.rotation) < STABILIZATION_THRESHOLD {
+    if player_transform.rotation.angle_between(target_rotation) < STABILIZATION_THRESHOLD {
         if current_velocity > STABILIZATION_THRESHOLD {
             ship.desired_rotation_vector = player_transform.rotation.inverse() * object.angular_velocity.normalize_or_zero() * -1.0;
         } else {
@@ -416,25 +441,20 @@ fn ship_rotation_aim_stabilization(
 }
 
 fn ship_movement_stabilization(
-    settings_query: Query<&SpaceShipSettings>,
-    mut ship_query: Query<(&SpaceObject, &Transform, &mut SpaceShip)>,
+    mut ship_query: Query<(&SpaceObject, &Transform, &mut SpaceShip, &SpaceShipSettings)>,
 ) {
-    let Ok(settings) = settings_query.get_single() else { return };
-    let Ok((object, ship_transform, mut ship)) = ship_query.get_single_mut() else { return };
-    
     const PERMISSIBLE_STABILIZATION_ERROR: f32 = 0.3;  // 0.3 m/s
+    for (object, ship_transform, mut ship, settings) in ship_query.iter_mut() {
+        if settings.movement_stabilization == MovementStabilization::No { continue; }
 
-    if settings.movement_stabilization == MovementStabilization::No {
-        return
+        if object.velocity.length() < PERMISSIBLE_STABILIZATION_ERROR {
+            ship.desired_movement_vector = Vec3::ZERO;
+            continue;
+        }
+
+        let stabilization_vector = object.velocity.normalize() * -1.0;
+        ship.desired_movement_vector = ship_transform.rotation.inverse() * stabilization_vector;
     }
-
-    if object.velocity.length() < PERMISSIBLE_STABILIZATION_ERROR {
-        ship.desired_movement_vector = Vec3::ZERO;
-        return
-    }
-
-    let stabilization_vector = object.velocity.normalize() * -1.0;
-    ship.desired_movement_vector = ship_transform.rotation.inverse() * stabilization_vector;
 }
 
 fn create_side_thruster_effect() -> EffectAsset {
@@ -545,25 +565,30 @@ fn create_main_thruster_effect() -> EffectAsset {
     })
 }
 
-fn spawn_ship(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut effects: ResMut<Assets<EffectAsset>>,
+fn spawn_ship<T: Bundle>(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    effects: &mut ResMut<Assets<EffectAsset>>,
+    transform: Transform,
+    boundle: T,
 ) {
-    let ship = meshes.add(Cuboid::new(1.0, 1.0, 2.5));
+    let ship_mesh = meshes.add(Cuboid::new(1.0, 1.0, 2.5));
 
-    commands.spawn((
+    let mut ship = commands.spawn((
         PbrBundle {
-            mesh: ship,
+            mesh: ship_mesh,
             material: materials.add(Color::srgb_u8(255, 0, 0)),
-            transform: Transform::from_xyz(0.0, 10.0, 0.0),
+            transform: transform,
             ..default()
         },
         SpaceObject::new(1000.0),
         SpaceShip::default(),
         SpaceShipSettings::default(),
-    )).with_children(|parent| {
+        boundle,
+    ));
+    
+    ship.with_children(|parent| {
 
         // main thruster
 
@@ -881,4 +906,14 @@ fn spawn_ship(
             );
         });
     });
+}
+
+fn spawn_player(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut effects: ResMut<Assets<EffectAsset>>,
+) {
+    spawn_ship(&mut commands, &mut meshes, &mut materials, &mut effects, Transform::from_xyz(0.0, 10.0, 0.0), Player);
+    spawn_ship(&mut commands, &mut meshes, &mut materials, &mut effects, Transform::from_xyz(20.0, 10.0, 20.0), AIPlayer);
 }
