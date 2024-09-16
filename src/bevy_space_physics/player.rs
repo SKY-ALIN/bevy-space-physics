@@ -355,9 +355,7 @@ fn move_camera(
     };
 
     let rotation_metrix = Mat3::from_quat(rotation);
-    //camera_transform.translation = player_transform.rotation * rotation_metrix.mul_vec3(Vec3::new(0.0,0.0, 10.0)) + player_transform.translation;
-    camera_transform.translation = rotation_metrix.mul_vec3(Vec3::new(0.0,0.0, 10.0)) + player_transform.translation;
-    // camera_transform.rotation = player_transform.rotation.inverse() * rotation;
+    camera_transform.translation = rotation_metrix.mul_vec3(Vec3::new(0.0,1.5, 10.0)) + player_transform.translation;
     camera_transform.rotation = rotation;
 }
 

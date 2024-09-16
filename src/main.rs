@@ -21,7 +21,7 @@ fn main() {
         .add_plugins(HanabiPlugin)
         .add_plugins((SpacePlugin, SpaceShipPlugin, SpaceShipSoundPlugin, CameraPlugin, DataDysplayPlugin))
         .add_systems(Startup, setup)
-        .add_systems(Update, update_gismos)
+        .add_systems(Update, update_gizmos)
         .run();
 }
 
@@ -48,6 +48,17 @@ fn setup(
             mesh: meshes.add(Cuboid::new(2.0, 2.0, 2.0)),
             material: materials.add(Color::srgb_u8(0, 0, 255)),
             transform: Transform::from_xyz(-15.0, 15.0, 15.0),
+            ..default()
+        },
+    ));
+
+    // Sun
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Sphere::new(696_340_000.0)),
+            material: materials.add(Color::srgb_u8(150, 0, 0)),
+            transform: Transform::from_xyz(-15.0, 15.0, 149_597_871_000.0),
             ..default()
         },
     ));
@@ -79,7 +90,7 @@ fn setup(
 }
 
 
-fn update_gismos(player_query: Query<(&Transform, &SpaceObject, &SpaceShip), With<SpaceShip>>, mut gizmos: Gizmos) {
+fn update_gizmos(player_query: Query<(&Transform, &SpaceObject, &SpaceShip), With<SpaceShip>>, mut gizmos: Gizmos) {
     for (ship_transform, object, ship) in player_query.iter() {
         gizmos.arrow(ship_transform.translation, ship_transform.translation + ship_transform.forward() * 3.0, GREEN);
         gizmos.arrow(ship_transform.translation, ship_transform.translation + ship_transform.up() * 1.0, GREEN);

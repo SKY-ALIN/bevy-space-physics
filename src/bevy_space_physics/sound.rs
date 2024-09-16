@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_kira_audio::prelude::*;
 
-use super::player::SpaceShip;
+use super::player::{Player, SpaceShip};
 
 pub struct SpaceShipSoundPlugin;
 
@@ -34,7 +34,7 @@ pub struct SideThruster;
 
 pub fn play_thruster_sounds(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    ship_query: Query<&SpaceShip>,
+    ship_query: Query<&SpaceShip, With<Player>>,
     main_thruster: Res<AudioChannel<MainThruster>>,
     side_thruster: Res<AudioChannel<SideThruster>>,
 ) {
