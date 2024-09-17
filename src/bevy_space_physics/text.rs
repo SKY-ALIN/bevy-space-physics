@@ -59,24 +59,24 @@ pub fn setup_text(mut commands: Commands) {
 
 pub fn update_metrics_text(
     mut text_query: Query<&mut Text, With<MetricsText>>,
-    ship_query: Query<(&SpaceObject, &SpaceShip), With<Player>>,
+    ship_query: Query<(&SpaceObject, &SpaceShip, &Transform), With<Player>>,
 ) {
     let Ok(mut text) = text_query.get_single_mut() else { return };
-    let Ok((object, ship)) = ship_query.get_single() else { return };
+    let Ok((object, ship, transform)) = ship_query.get_single() else { return };
 
-    const G: f32 = 9.81;
+    const EARTH_G: f32 = 9.81;
 
     let velocity = object.velocity.length();
     let angular_velocity = object.angular_velocity.length().to_degrees();
 
-    let linear_overload = object.acceleration.length();
-    let angular_overload = object.angular_velocity.length().powi(2) * ship.distance_from_center_to_pilot / G;
-    let angular_acceleration_vector = Vec3::new(
-        -object.angular_velocity.x * ship.distance_from_center_to_pilot,
-        -object.angular_velocity.y * ship.distance_from_center_to_pilot,
-        -object.angular_velocity.z * ship.distance_from_center_to_pilot,
-    ).normalize_or_zero() * angular_overload;
-    let overload = (linear_overload + angular_acceleration_vector).length() / G;
+    let linear_overload = object.acceleration + object.gravitational_force / object.mass;
+
+    let centripetal_velocity = object.angular_velocity.cross(ship.pilot_position);
+    let direction_to_center = transform.rotation * -ship.pilot_position.normalize_or_zero();
+    let centripetal_acceleration = centripetal_velocity.length().powi(2) / ship.pilot_position.length();
+    let angular_overload = direction_to_center * centripetal_acceleration;
+
+    let overload = (linear_overload + angular_overload).length() / EARTH_G;
 
     text.sections[0].value = format!("Overload: {overload:.2} G\nVelocity: {velocity:.2} m/s\nAngular velocity: {angular_velocity:.2} deg/s");
 }

@@ -133,7 +133,7 @@ pub struct Thruster {
 #[derive(Component)]
 pub struct SpaceShip {
     pub control_keys: ControlKeys,
-    pub distance_from_center_to_pilot: f32,
+    pub pilot_position: Vec3,
     pub desired_movement_vector: Vec3,
     pub desired_rotation_vector: Vec3,
 }
@@ -142,7 +142,7 @@ impl Default for SpaceShip {
     fn default() -> Self {
         SpaceShip {
             control_keys: ControlKeys::default(),
-            distance_from_center_to_pilot: 2.0,
+            pilot_position: Vec3::new(0.0, 0.0, 1.0),
             desired_movement_vector: Vec3::ZERO,
             desired_rotation_vector: Vec3::ZERO,
         }

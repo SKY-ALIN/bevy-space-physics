@@ -6,7 +6,7 @@ use bevy_hanabi::prelude::*;
 
 mod bevy_space_physics;
 use bevy_space_physics::player::{CameraPlugin, SpaceShip, SpaceShipCameraTarget, SpaceShipPlugin,};
-use bevy_space_physics::physics::{SpacePlugin, SpaceObject};
+use bevy_space_physics::physics::{SpacePlugin, SpaceObject, GravityPoint};
 use bevy_space_physics::text::DataDysplayPlugin;
 use bevy_space_physics::sound::SpaceShipSoundPlugin;
 
@@ -41,6 +41,7 @@ fn setup(
             transform: Transform::from_xyz(15.0, 15.0, 15.0),
             ..default()
         },
+        SpaceObject::new(10.0),
     ));
 
     commands.spawn((
@@ -50,15 +51,50 @@ fn setup(
             transform: Transform::from_xyz(-15.0, 15.0, 15.0),
             ..default()
         },
+        SpaceObject::new(100.0),
     ));
 
     // Sun
 
+    let sun_distance: f32 = 149_597_871_000.0;
+
     commands.spawn((
         PbrBundle {
             mesh: meshes.add(Sphere::new(696_340_000.0)),
-            material: materials.add(Color::srgb_u8(150, 0, 0)),
-            transform: Transform::from_xyz(-15.0, 15.0, 149_597_871_000.0),
+            material: materials.add(Color::srgb_u8(250, 160, 0)),
+            transform: Transform::from_xyz(-15.0, 15.0, sun_distance),
+            ..default()
+        },
+        SpaceObject::new(1.989e30),  // 1.989 × 10^30 kg
+        GravityPoint,
+    ));
+
+    // Earth
+
+    let earth_radius: f32 = 6_371_000.0;
+    let geostationary_orbit_high: f32 = 35_786_000.0;
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Sphere::new(earth_radius)),
+            material: materials.add(Color::srgb_u8(0, 150, 255)),
+            transform: Transform::from_xyz(earth_radius + geostationary_orbit_high, 15.0, 0.0),
+            ..default()
+        },
+        SpaceObject::new(5.972e24),  // 5.972 × 10^24 kg
+        GravityPoint,
+    ));
+
+    // Mars
+
+    let mars_radius = 3_389_500.0;
+    let mars_distance = 223_270_000_000.0 - sun_distance;
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Sphere::new(mars_radius)),
+            material: materials.add(Color::srgb_u8(255, 150, 0)),
+            transform: Transform::from_xyz(-15.0, 15.0, -mars_distance),
             ..default()
         },
     ));
