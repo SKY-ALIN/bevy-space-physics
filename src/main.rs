@@ -5,7 +5,7 @@ use bevy_hanabi::prelude::*;
 // use bevy_editor_pls::prelude::*;
 
 mod bevy_space_physics;
-use bevy_space_physics::player::{CameraPlugin, SpaceShip, SpaceShipCameraTarget, SpaceShipPlugin,};
+use bevy_space_physics::player::{SpaceShip, SpaceShipPlugin, CameraPlugin, CameraSet};
 use bevy_space_physics::physics::{SpacePlugin, SpaceObject, GravityPoint};
 use bevy_space_physics::text::DataDysplayPlugin;
 use bevy_space_physics::sound::SpaceShipSoundPlugin;
@@ -17,11 +17,10 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(ImagePlugin::default_nearest()))
         // .add_plugins(EditorPlugin::default())
-        // .add_plugins(AudioPlugin)
         .add_plugins(HanabiPlugin)
-        .add_plugins((SpacePlugin, SpaceShipPlugin, SpaceShipSoundPlugin, CameraPlugin, DataDysplayPlugin))
         .add_systems(Startup, setup)
-        .add_systems(Update, update_gizmos)
+        .add_plugins((SpacePlugin, SpaceShipPlugin, SpaceShipSoundPlugin, DataDysplayPlugin, CameraPlugin))
+        .add_systems(Update, update_gizmos.after(CameraSet))
         .run();
 }
 
@@ -32,7 +31,6 @@ fn setup(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut config_store: ResMut<GizmoConfigStore>,
 ) {
-    commands.spawn((Camera3dBundle::default(), SpaceShipCameraTarget::default()));
 
     commands.spawn((
         PbrBundle {

@@ -1,12 +1,13 @@
 use bevy::prelude::*;
 
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PhysicsSet;
 
 pub struct SpacePlugin;
 
 impl Plugin for SpacePlugin {
     fn build(&self, app: &mut App) {
-        // app;
-        app.add_systems(Update, (law_of_conservation_of_self_momentum, gravitational_force));
+        app.add_systems(Update, (law_of_conservation_of_self_momentum, gravitational_force).in_set(PhysicsSet));
     }
 }
 

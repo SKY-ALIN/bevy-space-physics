@@ -3,7 +3,10 @@ use bevy::window::PrimaryWindow;
 use bevy::input::mouse::MouseMotion;
 use bevy_hanabi::prelude::*;
 
-use super::physics::SpaceObject;
+use super::physics::{SpaceObject, PhysicsSet};
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+struct SpaceShipSet;
 
 pub struct SpaceShipPlugin;
 
@@ -12,21 +15,30 @@ impl Plugin for SpaceShipPlugin {
         app
             .add_systems(Startup, spawn_player)
             .add_systems(Update, (
-                control_ship,
-                apply_thrusters,
-                ship_rotation_full_stabilization,
-                ship_rotation_player_aim_stabilization,
-                ship_rotation_ai_aim_stabilization,
-                ship_movement_stabilization,
+                (
+                    control_ship,
+                    apply_thrusters,
+                    ship_rotation_full_stabilization,
+                    ship_rotation_player_aim_stabilization,
+                    ship_rotation_ai_aim_stabilization,
+                    ship_movement_stabilization,
+                ).in_set(SpaceShipSet),
             ));
     }
 }
+
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CameraSet;
 
 pub struct CameraPlugin;
 
 impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, move_camera);
+        app.add_systems(
+            Update,
+            move_camera.in_set(CameraSet).after(SpaceShipSet).after(PhysicsSet),
+        );
     }
 }
 
@@ -912,6 +924,7 @@ fn spawn_player(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut effects: ResMut<Assets<EffectAsset>>,
 ) {
+    commands.spawn((Camera3dBundle::default(), SpaceShipCameraTarget::default()));
     spawn_ship(&mut commands, &mut meshes, &mut materials, &mut effects, Transform::from_xyz(0.0, 10.0, 0.0), Player);
     spawn_ship(&mut commands, &mut meshes, &mut materials, &mut effects, Transform::from_xyz(20.0, 10.0, 20.0), AIPlayer);
 }
