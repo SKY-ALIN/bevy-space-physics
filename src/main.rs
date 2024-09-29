@@ -8,7 +8,6 @@ mod bevy_space_physics;
 use bevy_space_physics::player::{SpaceShip, SpaceShipPlugin, CameraPlugin, CameraSet};
 use bevy_space_physics::physics::{SpacePlugin, SpaceObject, GravityPoint};
 use bevy_space_physics::text::DataDysplayPlugin;
-use bevy_space_physics::sound::SpaceShipSoundPlugin;
 
 
 mod setup_effect;
@@ -19,7 +18,7 @@ fn main() {
         // .add_plugins(EditorPlugin::default())
         .add_plugins(HanabiPlugin)
         .add_systems(Startup, setup)
-        .add_plugins((SpacePlugin, SpaceShipPlugin, SpaceShipSoundPlugin, DataDysplayPlugin, CameraPlugin))
+        .add_plugins((SpacePlugin, SpaceShipPlugin, DataDysplayPlugin, CameraPlugin))
         .add_systems(Update, update_gizmos.after(CameraSet))
         .run();
 }

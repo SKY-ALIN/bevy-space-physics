@@ -5,9 +5,6 @@ use bevy_hanabi::prelude::*;
 
 use super::physics::{SpaceObject, PhysicsSet};
 
-#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
-struct SpaceShipSet;
-
 pub struct SpaceShipPlugin;
 
 impl Plugin for SpaceShipPlugin {
@@ -15,14 +12,12 @@ impl Plugin for SpaceShipPlugin {
         app
             .add_systems(Startup, spawn_player)
             .add_systems(Update, (
-                (
-                    control_ship,
-                    apply_thrusters,
-                    ship_rotation_full_stabilization,
-                    ship_rotation_player_aim_stabilization,
-                    ship_rotation_ai_aim_stabilization,
-                    ship_movement_stabilization,
-                ).in_set(SpaceShipSet),
+                control_ship,
+                apply_thrusters,
+                ship_rotation_full_stabilization,
+                ship_rotation_player_aim_stabilization,
+                ship_rotation_ai_aim_stabilization,
+                ship_movement_stabilization,
             ));
     }
 }
@@ -37,16 +32,41 @@ impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            move_camera.in_set(CameraSet).after(SpaceShipSet).after(PhysicsSet),
+            move_camera.in_set(CameraSet).after(PhysicsSet),
         );
     }
 }
 
-#[derive(Component)]
+trait ShipComponents {
+    type Bundle: Bundle;
+
+    fn get_boundle() -> Self::Bundle;
+}
+
+#[derive(Component, Default)]
 pub struct Player;
 
-#[derive(Component)]
+impl ShipComponents for Player {
+    type Bundle = (SpatialBundle, SpatialListener);
+
+    fn get_boundle() -> Self::Bundle {
+        (
+            SpatialBundle::from_transform(Transform::from_xyz(0.0, 0.0, 1.0)),
+            SpatialListener::new(0.5),
+        )
+    }
+}
+
+#[derive(Component, Default)]
 pub struct AIPlayer;
+
+impl ShipComponents for AIPlayer {
+    type Bundle = ();
+
+    fn get_boundle() -> Self::Bundle {
+        ()
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct ControlKeys {
@@ -276,6 +296,7 @@ fn apply_thrusters(
     mut ship_query: Query<(&SpaceShip, &Transform, &mut SpaceObject, &Children)>,
     thruster_query: Query<(&Thruster, &Transform, &Children)>,
     mut effect_query: Query<(&mut EffectSpawner, &mut EffectProperties)>,
+    audio_query: Query<&SpatialAudioSink>,
 ) {
     for (ship, ship_transform, mut object, ship_children) in ship_query.iter_mut() {
 
@@ -319,11 +340,17 @@ fn apply_thrusters(
                         effect_properties.set("velocity", (force_direction * -1.0 * velocity_value.as_scalar().as_f32() + object.velocity).into());
                         effect_spawner.set_active(true);
                     }
+                    if let Ok(audio_sink) = audio_query.get(child) {
+                        audio_sink.play();
+                    }
                 }
             } else {
                 for &child in thruster_children {
                     if let Ok((mut effect_spawner, _)) = effect_query.get_mut(child) {
                         effect_spawner.set_active(false);
+                    }
+                    if let Ok(audio_sink) = audio_query.get(child) {
+                        audio_sink.pause();
                     }
                 }
             }
@@ -575,13 +602,13 @@ fn create_main_thruster_effect() -> EffectAsset {
     })
 }
 
-fn spawn_ship<T: Bundle>(
+fn spawn_ship<T: ShipComponents + Bundle + Default>(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     effects: &mut ResMut<Assets<EffectAsset>>,
+    asset_server: &Res<AssetServer>,
     transform: Transform,
-    boundle: T,
 ) {
     let ship_mesh = meshes.add(Cuboid::new(1.0, 1.0, 2.5));
 
@@ -595,8 +622,14 @@ fn spawn_ship<T: Bundle>(
         SpaceObject::new(1000.0),
         SpaceShip::default(),
         SpaceShipSettings::default(),
-        boundle,
+        T::default(),
     ));
+
+    ship.with_children(|parent| {
+        parent.spawn(T::get_boundle());
+    });
+
+    // Thrusters
     
     ship.with_children(|parent| {
 
@@ -611,13 +644,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 1000.0, direction: Vec3::Z },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_main_thruster_effect())),
                     transform: Transform::from_xyz(0.0, 0.0, 0.25),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/main_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         // side thrusters (top)
@@ -631,13 +668,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::Y },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.0, 0.05, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -649,13 +690,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::Y },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.0, 0.05, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -667,13 +712,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::Y },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.0, 0.05, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -685,13 +734,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::Y },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.0, 0.05, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         // side thrusters (bottom)
@@ -705,13 +758,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::NEG_Y },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.0, -0.05, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -723,13 +780,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::NEG_Y },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.0, -0.05, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -741,13 +802,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::NEG_Y },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.0, -0.05, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -759,13 +824,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::NEG_Y },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.0, -0.05, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         // side thrusters (left)
@@ -779,13 +848,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::NEG_X },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(-0.05, 0.0, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -797,13 +870,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::NEG_X },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(-0.05, 0.0, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -815,13 +892,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::NEG_X },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(-0.05, 0.0, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -833,13 +914,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::NEG_X },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(-0.05, 0.0, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         // side thrusters (right)
@@ -853,13 +938,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::X },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.05, 0.0, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -871,13 +960,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::X },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.05, 0.0, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -889,13 +982,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::X },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.05, 0.0, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
 
         parent.spawn((
@@ -907,13 +1004,17 @@ fn spawn_ship<T: Bundle>(
             },
             Thruster { force: 100.0, direction: Vec3::X },
         )).with_children(|thruster| {
-            thruster.spawn(
+            thruster.spawn((
                 ParticleEffectBundle {
                     effect: ParticleEffect::new(effects.add(create_side_thruster_effect())),
                     transform: Transform::from_xyz(0.05, 0.0, 0.0),
                     ..default()
-                }
-            );
+                },
+                AudioBundle {
+                    source: asset_server.load("sounds/side_thruster.ogg"),
+                    settings: PlaybackSettings::LOOP.with_spatial(true).paused(),
+                },
+            ));
         });
     });
 }
@@ -923,8 +1024,23 @@ fn spawn_player(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut effects: ResMut<Assets<EffectAsset>>,
+    asset_server: Res<AssetServer>,
 ) {
     commands.spawn((Camera3dBundle::default(), SpaceShipCameraTarget::default()));
-    spawn_ship(&mut commands, &mut meshes, &mut materials, &mut effects, Transform::from_xyz(0.0, 10.0, 0.0), Player);
-    spawn_ship(&mut commands, &mut meshes, &mut materials, &mut effects, Transform::from_xyz(20.0, 10.0, 20.0), AIPlayer);
+    spawn_ship::<Player>(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &mut effects,
+        &asset_server,
+        Transform::from_xyz(0.0, 10.0, 0.0),
+    );
+    spawn_ship::<AIPlayer>(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &mut effects,
+        &asset_server,
+        Transform::from_xyz(20.0, 10.0, 20.0),
+    );
 }
