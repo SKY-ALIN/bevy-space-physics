@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy::input::mouse::MouseMotion;
+use big_space::{precision::GridPrecision,world_query::GridTransform, ReferenceFrameCommands};
 use bevy_hanabi::prelude::*;
 
 use super::physics::{SpaceObject, PhysicsSet};
@@ -10,7 +11,6 @@ pub struct SpaceShipPlugin;
 impl Plugin for SpaceShipPlugin {
     fn build(&self, app: &mut App) {
         app
-            .add_systems(Startup, spawn_player)
             .add_systems(Update, (
                 control_ship,
                 apply_thrusters,
@@ -22,7 +22,6 @@ impl Plugin for SpaceShipPlugin {
     }
 }
 
-
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CameraSet;
 
@@ -32,41 +31,16 @@ impl Plugin for CameraPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            move_camera.in_set(CameraSet).after(PhysicsSet),
+            move_camera_big_space::<i64>.in_set(CameraSet).after(PhysicsSet),
         );
     }
-}
-
-trait ShipComponents {
-    type Bundle: Bundle;
-
-    fn get_boundle() -> Self::Bundle;
 }
 
 #[derive(Component, Default)]
 pub struct Player;
 
-impl ShipComponents for Player {
-    type Bundle = (SpatialBundle, SpatialListener);
-
-    fn get_boundle() -> Self::Bundle {
-        (
-            SpatialBundle::from_transform(Transform::from_xyz(0.0, 0.0, 1.0)),
-            SpatialListener::new(0.5),
-        )
-    }
-}
-
 #[derive(Component, Default)]
 pub struct AIPlayer;
-
-impl ShipComponents for AIPlayer {
-    type Bundle = ();
-
-    fn get_boundle() -> Self::Bundle {
-        ()
-    }
-}
 
 #[derive(Clone, Copy)]
 pub struct ControlKeys {
@@ -365,7 +339,6 @@ fn move_camera(
     window_query: Query<&Window, With<PrimaryWindow>>,
     mut camera: Query<&mut Transform, With<SpaceShipCameraTarget>>,
     player: Query<&Transform, (With<Player>, Without<SpaceShipCameraTarget>)>,
-
 ) {
     let Ok(player_transform) = player.get_single() else { return };
     let Ok(mut camera_transform) = camera.get_single_mut() else { return };
@@ -396,6 +369,44 @@ fn move_camera(
     let rotation_metrix = Mat3::from_quat(rotation);
     camera_transform.translation = rotation_metrix.mul_vec3(Vec3::new(0.0,1.5, 10.0)) + player_transform.translation;
     camera_transform.rotation = rotation;
+}
+
+fn move_camera_big_space<P: GridPrecision>(
+    mut mouse_motion: EventReader<MouseMotion>,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    mut camera: Query<GridTransform<P>, With<SpaceShipCameraTarget>>,
+    player: Query<GridTransform<P>, (With<Player>, Without<SpaceShipCameraTarget>)>,
+) {
+    let Ok(player_grid_transform) = player.get_single() else { return };
+    let Ok(mut camera_grid_transform) = camera.get_single_mut() else { return };
+    let Ok(window) = window_query.get_single() else { return };
+
+    let mut motion = Vec2::ZERO;
+    for m in mouse_motion.read() {
+        motion = m.delta;
+    }
+
+    let rotation = {
+        if motion.length_squared() > 0.0 {
+            let delta_x = -motion.x / window.width() * std::f32::consts::PI;
+            let delta_y = -motion.y / window.height() * std::f32::consts::PI;
+            let rotation = Quat::from_rotation_y(delta_x) * camera_grid_transform.transform.rotation;
+            let rotation_with_pitch = rotation * Quat::from_rotation_x(delta_y);
+            let up_vector = rotation_with_pitch * Vec3::Y;
+            if up_vector.y > 0.0 {
+                rotation_with_pitch
+            } else {
+                rotation
+            }
+        } else {
+            camera_grid_transform.transform.rotation
+        }
+    };
+
+    let rotation_metrix = Mat3::from_quat(rotation);
+    *camera_grid_transform.cell = player_grid_transform.cell.clone();
+    camera_grid_transform.transform.translation = player_grid_transform.transform.translation + rotation_metrix.mul_vec3(Vec3::new(0.0,1.5, 10.0));
+    camera_grid_transform.transform.rotation = rotation;
 }
 
 fn ship_rotation_full_stabilization(
@@ -434,13 +445,13 @@ fn ship_rotation_player_aim_stabilization(
 }
 
 fn ship_rotation_ai_aim_stabilization(
-    mut ship_query: Query<(&SpaceObject, &mut SpaceShip, &Transform), With<AIPlayer>>,
-    player_query: Query<&Transform, With<Player>>,
+    mut ship_query: Query<(&SpaceObject, &mut SpaceShip, &Transform, &GlobalTransform), With<AIPlayer>>,
+    player_query: Query<&GlobalTransform, With<Player>>,
 ) {
-    let Ok(player_transform) = player_query.get_single() else { return };
-    for (object, mut ship, ship_transform) in ship_query.iter_mut() {
+    let Ok(player_global_transform) = player_query.get_single() else { return };
+    for (object, mut ship, ship_transform, ship_global_transform) in ship_query.iter_mut() {
         ship.desired_movement_vector = Vec3::NEG_Z;
-        let target = Quat::from_rotation_arc(Vec3::Z, (ship_transform.translation - player_transform.translation).normalize());
+        let target = Quat::from_rotation_arc(Vec3::Z, (ship_global_transform.translation() - player_global_transform.translation()).normalize());
         ship_rotation_aim_stabilization(object, &mut ship, ship_transform, target);
     }
 }
@@ -602,36 +613,28 @@ fn create_main_thruster_effect() -> EffectAsset {
     })
 }
 
-fn spawn_ship<T: ShipComponents + Bundle + Default>(
-    commands: &mut Commands,
+pub fn spawn_ship(
+    commands: &mut ReferenceFrameCommands<i64>,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     effects: &mut ResMut<Assets<EffectAsset>>,
     asset_server: &Res<AssetServer>,
-    transform: Transform,
 ) {
     let ship_mesh = meshes.add(Cuboid::new(1.0, 1.0, 2.5));
 
-    let mut ship = commands.spawn((
-        PbrBundle {
-            mesh: ship_mesh,
-            material: materials.add(Color::srgb_u8(255, 0, 0)),
-            transform: transform,
-            ..default()
-        },
-        SpaceObject::new(1000.0),
-        SpaceShip::default(),
-        SpaceShipSettings::default(),
-        T::default(),
-    ));
-
-    ship.with_children(|parent| {
-        parent.spawn(T::get_boundle());
+    commands.with_children(|children| {
+        children.spawn((
+            PbrBundle {
+                mesh: ship_mesh,
+                material: materials.add(Color::srgb_u8(255, 0, 0)),
+                ..default()
+            },
+        ));
     });
 
     // Thrusters
     
-    ship.with_children(|parent| {
+    commands.with_children(|parent| {
 
         // main thruster
 
@@ -1017,30 +1020,4 @@ fn spawn_ship<T: ShipComponents + Bundle + Default>(
             ));
         });
     });
-}
-
-fn spawn_player(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-    mut effects: ResMut<Assets<EffectAsset>>,
-    asset_server: Res<AssetServer>,
-) {
-    commands.spawn((Camera3dBundle::default(), SpaceShipCameraTarget::default()));
-    spawn_ship::<Player>(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        &mut effects,
-        &asset_server,
-        Transform::from_xyz(0.0, 10.0, 0.0),
-    );
-    spawn_ship::<AIPlayer>(
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        &mut effects,
-        &asset_server,
-        Transform::from_xyz(20.0, 10.0, 20.0),
-    );
 }
